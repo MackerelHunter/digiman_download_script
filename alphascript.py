@@ -1,119 +1,177 @@
-#%% imports
-
+# using stac api
 from pystac_client import Client
+import pystac
+
+# pandas for geodata (data analaysis)
 import geopandas
+
+# working with raster files
 import rioxarray
-import os
-from shapely.geometry import shape
-from shapely.geometry import Point
-from shapely.ops import transform
-import shapely
-import json
-import utm
+
+# interacting via http
 import requests
 
+# for the polygon
+import shapely
+
+# for useful functions concering paths, files, directories
+import os
+
+# filename pattern matching
+from glob import glob
+
+# truncating file extensions
+from pathlib import Path
+
 # for selecting a file from explorer
-from PIL import ImageTk, Image
-from tkinter import *
 from tkinter import filedialog, Tk
-#%% taking care of the shape file
 
-# read shape file (crs is automatically detected)
-# open an explorer dialog
-rootwindow = Tk()
-rootwindow.wm_attributes('-topmost', True)
-rootwindow.withdraw()
-shapefile_path = filedialog.askopenfile(
-    initialdir="~",
-    title="open your shapefile"
-    )
-hausfeld_shapefile = geopandas.read_file(shapefile_path.name)
+def get_shapefile_list():
+    starting_dir = os.getcwd()
+    shapefiles = []
+    pattern = "*.shp"
+    for dir,_,_ in os.walk(starting_dir):
+        shapefiles.extend(glob(os.path.join(dir, pattern)))
+    return shapefiles
+    
+def choose_directory() -> str:
+    rootwindow = Tk()
+    rootwindow.wm_attributes('-topmost', True)
+    rootwindow.withdraw()
+    directory = filedialog.askdirectory(
+        title="choose_directory")
+    return directory
+    
+    
+def get_filename_from_path(path: str):
+    return Path(path).stem
 
-# change crs to 4326 (wgs84), the only accepted by client search
-hausfeld_in_4326 = hausfeld_shapefile.to_crs(4326)
+def get_shapefile_from_explorer():
+    """
+    opens an explorer window,
+    user can select a shape file
+    """
+    rootwindow = Tk()
+    rootwindow.wm_attributes('-topmost', True)
+    rootwindow.withdraw()
+    shapefile= filedialog.askopenfile(
+        filetypes=[("shape files", "*.shp")])
+    return shapefile
 
-# my polygon
-hausfeld_polygon = hausfeld_in_4326.geometry[0]
+def extract_4326_polygon(shape_filepath: str) -> shapely.Polygon:
+    """
+    takes a filepath (to a shape file hopefully)
+    and reads it as a geodataframe, then turns the crs of the shape into
+    4326 (WGS84, latlong-coordinates) and extracts the polygon from the
+    geodataframe
+    """
+    shape_gdf = geopandas.read_file(shape_filepath)
+    shape_gdf = shape_gdf.to_crs(4326)
+    polygon = shape_gdf.geometry[0]
+    return polygon
 
-# method to flip x and y coordinates
-def flip(x, y):
-    return y, x
+def create_item_collection(stac_catalogue: str, collection: str, timeframe: str, polygon: shapely.Polygon) -> pystac.ItemCollection:
+    """
+    takes a couple of parameters and returns a collection of
+    stac items matching them
+    """
+    client = Client.open(stac_catalogue)
+    search = client.search(
+        max_items=10000,
+        collections = collection,
+        intersects = polygon,
+        datetime = timeframe
+        )
+    stac_items = search.item_collection()
+    return stac_items
 
-# shapely transform method applying flip to my polygon
-# hausfeld_polygon = transform(flip, hausfeld_polygon)
-print(hausfeld_polygon)
+def show_item_assets(item: pystac.Item):
+    assets = item.assets
+    #assets is an attribute of a stac item and a dictionary of asset objects
+    for key, asset in assets.items():
+        print(f"{key} : {asset.title}")
 
-#%% stac client action
+def get_thumbnail(item: pystac.Item):
+    thumbnail_url = item.assets["thumbnail"].href
+    data = requests.get(thumbnail_url).content
+    thumbnail = open(item.id + "thumbnail" + ".jpg", "wb")
+    # wb = write binary
+    thumbnail.write(data)
+    thumbnail.close()
+    
+def get_raster_and_clip_and_download(
+        shape_name: str,
+        band_name: str, 
+        item: pystac.Item, 
+        polygon: shapely.Polygon
+        ):
+    """
+    takes a band (e.g. red), a polygon in 4326 coords and a stac item,
+    opens a raster of that item's band and clips it to the polygon,
+    then saves it as a .jp2-file
+    """
+    band_url = item.assets[band_name].href
+    clipped_raster = rioxarray.open_rasterio(
+        band_url, masked=True).rio.clip(
+            [polygon], crs="4326", from_disk=True)
+    # for efficiency clip must directly take the output of
+    # open_rasterio and from_disk must be True,
+    # use [polygon] because clip expects a list of geometries
+    if os.path.exists("./" + shape_name) == False:
+        os.mkdir(shape_name)
+    item_time = item.datetime.strftime('%Y%m%d')
+    clipped_raster.rio.to_raster("./" + shape_name + "/" +
+                                 item_time + "_" +
+                                 shape_name + "_" + 
+                                 band_name + 
+                                 ".jp2")
 
-stac_catalogue = "https://earth-search.aws.element84.com/v1"
-collection = "sentinel-2-l2a"
-timeframe = "2025-04/2025-05"
+#%%
 
-# new stac clien initialized
-client = Client.open(stac_catalogue)
+def lil_test():
+    # parameters
+    stac_catalogue = "https://earth-search.aws.element84.com/v1"
+    collection = "sentinel-2-l2a"
+    timeframe = "2025-04/2025-05"
+    
+    # get your example item
+    os.chdir(choose_directory())
+    shape_filepath = get_shapefile_from_explorer().name
+    shape_name = Path(shape_filepath).stem
+    
+    
+    polygon = extract_4326_polygon(shape_filepath)
+    matching_items = create_item_collection(
+        stac_catalogue, collection, timeframe, polygon)
+    item = matching_items[0]
+    
+    # show me the assets of these items
+    show_item_assets(item)
+    
+    # get a thumbnail
+    get_thumbnail(item)
+    
+    # download a full color image of the area
+    get_raster_and_clip_and_download(shape_name, "red", item, polygon)
 
-# creating search, expecting polygon with wgs84 coordinates
-# returns Item_Search instance, a deferred query to a stac search endpoint
-# only once a method is called to iterate through the resulting items is the
-# api call made
-search = client.search(
-    max_items=10,
-    collections = collection,
-    intersects = hausfeld_polygon,
-    datetime = timeframe
-    )
-
-# returns number of matches, does not work with all apis
-print(search.matched())
-
-# makes the api call and returns an iterable ItemCollection instance
-# containing stac items
-stac_items = search.item_collection()
-
-#%% lets check the assets
-
-# assets is an attribute of a stac item and a dictionary of asset objects
-# lets create a dictionary of the first stac item
-# also show me the type of assets we have
-assets_n1 = stac_items[1].assets
-for key, asset in assets_n1.items():
-    print(f"{key} : {asset.title}")
-
-
-#%% download a thumbnail
-
-thumbnail_url = (assets_n1["thumbnail"].href)
-
-# download the data via the requests package
-data = requests.get(thumbnail_url).content
-
-# we create a new image with that name and wb = write binary to it
-image = open('test.jpg', 'wb')
-image.write(data)
-image.close()
-
-#%% download rgb bands
-
-# get the bands urls
-# see the assets name from above
-red_href = assets_n1["red"].href
-green_href = assets_n1["green"].href
-blue_href = assets_n1["blue"].href
-
-# get the rasters and directly clip them to save ram
-# use [hausfeld_polygon] because clip expects a list
-# of geometries
-red_hausfeld = rioxarray.open_rasterio(red_href, masked=True).rio.clip([hausfeld_polygon], from_disk=True)
-
-green = rioxarray.open_rasterio(green_href)
-green.rio.to_raster("green.jp2")
-blue = rioxarray.open_rasterio(blue_href)
-
-
-
-visual = rioxarray.open_rasterio(assets_n1["visual"].href)
-visual_to_shape = visual.rio.clip([hausfeld_polygon], crs="4326")
-visual_to_shape.rio.to_raster("visual_to_shape.jp2")
-
-# test-polygon (trying to find something that overlaps)
-visual.rio.crs
+    
+def the_whole_script():
+    # variables
+    stac_catalogue = "https://earth-search.aws.element84.com/v1"
+    collection = "sentinel-2-l2a"
+    timeframe = "2025-04/2025-05"
+    bands_of_interest = ["red", "green", "blue", "nir"]
+    
+    # workflow
+    starting_directory = choose_directory()
+    os.chdir(starting_directory)
+    shapefiles = get_shapefile_list()
+    for shapefile_path in shapefiles:
+        shapefile_path = get_shapefile_from_explorer().name
+        shape_name = Path(shapefile_path).stem
+        polygon = extract_4326_polygon(shapefile_path)
+        matching_items = create_item_collection(
+        stac_catalogue, collection, timeframe, polygon)
+        for item in matching_items:
+            for band in bands_of_interest:
+                get_raster_and_clip_and_download(shape_name, band, item, polygon)
