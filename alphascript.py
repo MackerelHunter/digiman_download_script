@@ -26,8 +26,7 @@ from pathlib import Path
 # for selecting a file from explorer
 from tkinter import filedialog, Tk
 
-def get_shapefile_list():
-    starting_dir = os.getcwd()
+def get_shapefile_list(starting_dir):
     shapefiles = []
     pattern = "*.shp"
     for dir,_,_ in os.walk(starting_dir):
@@ -41,10 +40,6 @@ def choose_directory() -> str:
     directory = filedialog.askdirectory(
         title="choose_directory")
     return directory
-    
-    
-def get_filename_from_path(path: str):
-    return Path(path).stem
 
 def get_shapefile_from_explorer():
     """
@@ -132,7 +127,7 @@ def lil_test():
     # parameters
     stac_catalogue = "https://earth-search.aws.element84.com/v1"
     collection = "sentinel-2-l2a"
-    timeframe = "2025-04/2025-05"
+    timeframe = "2025-04-01/2025-04-15"
     
     # get your example item
     os.chdir(choose_directory())
@@ -155,19 +150,18 @@ def lil_test():
     get_raster_and_clip_and_download(shape_name, "red", item, polygon)
 
     
-def the_whole_script():
+def demo():
     # variables
     stac_catalogue = "https://earth-search.aws.element84.com/v1"
     collection = "sentinel-2-l2a"
-    timeframe = "2025-04/2025-05"
+    timeframe = "2025-04-01/2025-04-15"
     bands_of_interest = ["red", "green", "blue", "nir"]
     
     # workflow
-    starting_directory = choose_directory()
-    os.chdir(starting_directory)
-    shapefiles = get_shapefile_list()
+    starting_dir = choose_directory()
+    os.chdir(starting_dir)
+    shapefiles = get_shapefile_list(starting_dir)
     for shapefile_path in shapefiles:
-        shapefile_path = get_shapefile_from_explorer().name
         shape_name = Path(shapefile_path).stem
         polygon = extract_4326_polygon(shapefile_path)
         matching_items = create_item_collection(
@@ -175,3 +169,7 @@ def the_whole_script():
         for item in matching_items:
             for band in bands_of_interest:
                 get_raster_and_clip_and_download(shape_name, band, item, polygon)
+
+demo()
+
+                
