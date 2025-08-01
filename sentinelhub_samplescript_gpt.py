@@ -1,45 +1,67 @@
 import geopandas as gpd
-from sentinelhub import (
-    SHConfig, CRS, BBox, bbox_to_dimensions,
-    SentinelHubRequest, SentinelHubCatalog,
-    DataCollection, MimeType, Geometry
-)
+import sentinelhub as sh
 import rasterio
 import numpy as np
 import os
 
-# ==== Konfiguration ====
-SHAPEFILE_PATH = r"C:\Users\juliu\Daten\HSWT SHK Leßke\digiman_download_script\test_input\b_TUM Freising\Heindlacker\Heindlacker.shp"
-OUTPUT_FOLDER = r"C:\Users\juliu\Daten\HSWT SHK Leßke\digiman_download_script\test_output"
-START_DATE = '2024-06-01'
-END_DATE = '2024-06-30'
-RESOLUTION = 10  # Meter pro Pixel
+### Variables
+"""
+Set example files for testing purposes,
+timeframe, bands of interest, output folder, etc.
+"""
+SHAPEFILE_PATH = r"M:\IT-Projekte\digiman local\digiman_data\test_shapes\Bergfeld_Schlagkontur\Schlagkontur-Klein.shp"
+EXAMPLE_SHP_MANY_FIELDS = r"M:\IT-Projekte\digiman local\digiman_data\test_shapes\Roggenstein_komplett\Roggenstein_komplett.shp"
+OUTPUT_FOLDER = r"M:\IT-Projekte\digiman local\digiman_data\test_output"
+START_DATE = '2025-07-13'
+END_DATE = '2025-07-14'
+RESOLUTION = 7  # Meter pro Pixel
+BAND_NAMES = ["B01","B02","B03","B04","B05","B06","B07","B08","B8A","B09","B11","B12"]
+INPUT_CRS = sh.CRS.UTM_32N
 
-# ==== Sentinel Hub Setup ====
-config = SHConfig()
-
-print("Client ID aus Environment:", config.sh_client_id)
-print("Client Secret aus Environment:", config.sh_client_secret)
-
-# ==== Shapefile laden ====
+### load shapefile
+"""
+Read shapefile via geopandas and turn it into geodataframe.
+The gdf contains all the information from the shapefile, including
+field id etc. Extracts the geometry (coordinate vertices) from the 
+gdf. union_all() can create a bounding box (coordinates for rectangle
+containing shape) for multipolygons (in case of multiple areas
+within a shape). We must turn it into a sh.BBox to use sh.geo_utils,
+in case we want to change the coordinate system before the request.
+"""
 gdf = gpd.read_file(SHAPEFILE_PATH)
-geometry = gdf.geometry.unary_union
-bbox = BBox(bbox=geometry.bounds, crs=CRS.WGS84)
-geom = Geometry(geometry, crs=CRS.WGS84)
+gdf = gdf.to_crs(crs=INPUT_CRS.value) # value contains str
+geometry = gdf.geometry.union_all()
+bbox = sh.BBox(bbox=geometry.bounds, crs=INPUT_CRS)
+size = sh.bbox_to_dimensions(bbox, RESOLUTION)
 
-# ==== Katalogabfrage ====
-catalog = SentinelHubCatalog(config=config)
-search_iterator = catalog.search(
-    DataCollection.SENTINEL2_L2A,
+### SentinelHub-Setup
+"""
+Takes authentification details for sentinhelhub
+from the environmental
+variables SH_CLIENT_ID and SH_CLIENT_SECRET
+"""
+config = sh.SHConfig()
+
+### catalog search
+""" 
+Create iterator containing scenes in the
+l2a collection from the 
+sentinelhub stac matching the desired timeframe
+and location, excluding unnecessary information
+"""
+catalog = sh.SentinelHubCatalog(config=config)
+matching_scenes = catalog.search(
+    sh.DataCollection.SENTINEL2_L2A,
     bbox=bbox,
     time=(START_DATE, END_DATE),
     fields={"include": ["id", "properties.datetime"], "exclude": []}
 )
 
-scenes = list(search_iterator)
-print(f"Gefundene Szenen: {len(scenes)}")
 
-# ==== Evalscript (alle Bänder) ====
+"""
+Evalscript for sentinelhub request, specifying input
+and output and function to be applied
+"""
 evalscript = """
 function setup() {
     return {
@@ -56,29 +78,51 @@ function evaluatePixel(sample) {
     ];
 }
 """
+#%% kurze experimente für iterator
 
-band_names = ["B01","B02","B03","B04","B05","B06","B07","B08","B8A","B09","B11","B12"]
 
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-for i, scene in enumerate(scenes):
+#%%
+"""
+We iterate over every scene, identified by the
+scene id.
+"""
+for scene in matching_scenes:
+    """
+    We cut off the last 10 characters from the
+    datetime string, which contain the time.
+    """
     time_str = scene["properties"]["datetime"][:10]
+    id = scene["id"]
+    
+    """
+    The Request is fed the evalscript and the input_data string.
+    We provide the previously extracted date as the start and finish
+    of our time_intervall, so data from the whole day is considered.
+    We choose mostRecent as our mosaicking_order, incase the bbox
+    overlaps multiple tiles with data from different times
+    """
 
-    request = SentinelHubRequest(
+    request = sh.SentinelHubRequest(
         evalscript=evalscript,
         input_data=[
-            SentinelHubRequest.input_data(
-                data_collection=DataCollection.SENTINEL2_L2A,
+            sh.SentinelHubRequest.input_data(
+                data_collection=sh.DataCollection.SENTINEL2_L2A,
                 time_interval=(time_str, time_str),
                 mosaicking_order="mostRecent"
             )
         ],
-        responses=[SentinelHubRequest.output_response("default", MimeType.TIFF)],
+        responses=[sh.SentinelHubRequest.output_response("default", sh.MimeType.TIFF)],
         bbox=bbox,
-        size=bbox_to_dimensions(bbox, RESOLUTION),
-        config=config
+        size=size,
+        config=config,
+        data_folder=OUTPUT_FOLDER
     )
+    
+    request.get_data(save_data=True)
 
+
+#%%
     data_list = request.get_data()
     img = data_list[0]  # Shape: (H, W, Bands)
     height, width, bands = img.shape
@@ -89,7 +133,7 @@ for i, scene in enumerate(scenes):
     scene_folder = os.path.join(OUTPUT_FOLDER, time_str)
     os.makedirs(scene_folder, exist_ok=True)
 
-    for band_idx, band_name in enumerate(band_names):
+    for band_idx, band_name in enumerate(BAND_NAMES):
         band_data = img[:, :, band_idx].astype(np.float32)
 
         out_fp = os.path.join(scene_folder, f"{band_name}.tif")
@@ -106,7 +150,3 @@ for i, scene in enumerate(scenes):
 
         with rasterio.open(out_fp, 'w', **meta) as dst:
             dst.write(band_data, 1)
-
-    print(f"[{i+1}/{len(scenes)}] Alle Bänder gespeichert für {time_str}")
-
-print("✅ Alle Bilder und Bänder gespeichert.")
