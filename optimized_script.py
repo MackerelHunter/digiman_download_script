@@ -30,22 +30,16 @@ work and must be split up for sentinelhub.
 """
 INPUT_FOLDER = r"M:\IT-Projekte\digiman local\digiman_data\test_input"
 OUTPUT_FOLDER = r"M:\IT-Projekte\digiman local\digiman_data\test_output"
-START_DATE = '2025-06-23'
-END_DATE = '2025-06-23'
-RESOLUTION = 10  # Meter pro Pixel
+START_DATE = '2025-06-21'
+END_DATE = '2025-06-21'
+RESOLUTION_HIGH = 10  #B02, B03, B04, B08
+RESOLUTION_MED = 20 #B8A
 BAND_NAMES = [
-    "B01",
     "B02",
     "B03",
     "B04",
-    "B05",
-    "B06",
-    "B07",
     "B08",
     "B8A",
-    "B09",
-    "B11",
-    "B12"
 ]
 
 """
@@ -206,9 +200,9 @@ for shapefile_path in shapefile_list:
         crs_code = gdf.crs.to_epsg()
     geometry = gdf.geometry.union_all()
     shgeometry = sh.Geometry(geometry, sh.CRS(crs_code))
-    bbox_unrounded = sh.BBox(bbox=geometry.bounds, crs=sh.CRS(crs_code)).buffer(0.2)
+    bbox_unrounded = sh.BBox(bbox=geometry.bounds, crs=sh.CRS(crs_code))
     bbox = bbox_unrounded.apply(round_coordinates)
-    size = sh.bbox_to_dimensions(bbox, RESOLUTION)
+    size = sh.bbox_to_dimensions(bbox, RESOLUTION_HIGH)
     
     logger.info(f"{shapefile_path.name}: {repr(bbox)}")
     
