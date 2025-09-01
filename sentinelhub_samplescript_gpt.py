@@ -24,8 +24,8 @@ should be 10 (m/px), which is the highest available.
 """
 INPUT_FOLDER = r"C:\Users\juliu\Daten\IT-Projekte\Digiman\data\test_input"
 OUTPUT_FOLDER = r"C:\Users\juliu\Daten\IT-Projekte\Digiman\data\test_output"
-START_DATE = '2018-04-19'
-END_DATE = '2018-04-20'
+START_DATE = '2025-06-23'
+END_DATE = '2025-06-23'
 RESOLUTION = 10  # Meter pro Pixel
 BAND_NAMES = ["B02", "B03", "B04"]
 
@@ -119,7 +119,7 @@ for shapefile_path in shapefile_list:
     else:
         crs_code = gdf.crs.to_epsg()
     geometry = gdf.geometry.union_all()
-    bbox_unrounded = sh.BBox(bbox=geometry.bounds, crs=sh.CRS(crs_code)).buffer(1.1)
+    bbox_unrounded = sh.BBox(bbox=geometry.bounds, crs=sh.CRS(crs_code))
     bbox = bbox_unrounded.apply(round_coordinates)
     print(shapefile_path.name, " : ", bbox.__str__())
     size = sh.bbox_to_dimensions(bbox, RESOLUTION)
