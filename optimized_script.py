@@ -115,37 +115,25 @@ function setup() {
             ],
             units: "DN"
         }],
-        output: [
-            { id: "B01", bands: 1, sampleType: "UINT16" },
-            { id: "B02", bands: 1, sampleType: "UINT16" },
-            { id: "B03", bands: 1, sampleType: "UINT16" },
-            { id: "B04", bands: 1, sampleType: "UINT16" },
-            { id: "B05", bands: 1, sampleType: "UINT16" },
-            { id: "B06", bands: 1, sampleType: "UINT16" },
-            { id: "B07", bands: 1, sampleType: "UINT16" },
-            { id: "B08", bands: 1, sampleType: "UINT16" },
-            { id: "B8A", bands: 1, sampleType: "UINT16" },
-            { id: "B09", bands: 1, sampleType: "UINT16" },
-            { id: "B11", bands: 1, sampleType: "UINT16" },
-            { id: "B12", bands: 1, sampleType: "UINT16" }
-            ]
+        output:
+            [{id: "default", bands: 12, sampleType: "UINT16" }]
     };
 }
 function evaluatePixel(sample) {
-    return {
-        B01: [sample.B01],
-        B02: [sample.B02],
-        B03: [sample.B03],
-        B04: [sample.B04],
-        B05: [sample.B05],
-        B06: [sample.B06],
-        B07: [sample.B07],
-        B08: [sample.B08],
-        B8A: [sample.B8A],
-        B09: [sample.B09],
-        B11: [sample.B11],
-        B12: [sample.B12]
-        }
+    return [
+  sample.B01,
+  sample.B02,
+  sample.B03,
+  sample.B04,
+  sample.B05,
+  sample.B06,
+  sample.B07,
+  sample.B08,
+  sample.B8A,
+  sample.B09,
+  sample.B11,
+  sample.B12
+        ]
 }
 """
 
@@ -159,19 +147,7 @@ outputs from the evalscript. Thus the evalscript can provide
 all bands, but we could create a separate response for each one.
 """
 responses = [
-    sh.SentinelHubRequest.output_response("B01", sh.MimeType.TIFF),
-    sh.SentinelHubRequest.output_response("B02", sh.MimeType.TIFF),
-    sh.SentinelHubRequest.output_response("B03", sh.MimeType.TIFF),
-    sh.SentinelHubRequest.output_response("B04", sh.MimeType.TIFF),
-    sh.SentinelHubRequest.output_response("B05", sh.MimeType.TIFF),
-    sh.SentinelHubRequest.output_response("B06", sh.MimeType.TIFF),
-    sh.SentinelHubRequest.output_response("B07", sh.MimeType.TIFF),
-    sh.SentinelHubRequest.output_response("B08", sh.MimeType.TIFF),
-    sh.SentinelHubRequest.output_response("B8A", sh.MimeType.TIFF),
-    sh.SentinelHubRequest.output_response("B09", sh.MimeType.TIFF),
-    sh.SentinelHubRequest.output_response("B11", sh.MimeType.TIFF),
-    sh.SentinelHubRequest.output_response("B12", sh.MimeType.TIFF)
-    ]
+    sh.SentinelHubRequest.output_response("default", sh.MimeType.TIFF)]
 
 ### Iterate over found shapefiles
 for shapefile_path in shapefile_list:
@@ -294,12 +270,13 @@ for shapefile_path in shapefile_list:
                 ],
                 responses=responses,
                 bbox=bbox,
+                geometry=shgeometry,
                 size=size,
                 config=config,
                 data_folder=datefolder_path
             )
             request.save_data()
-            
+            ''' tmp outcomment
             """
             Move the response.tar one level up, out of the folder named
             after the hash (works via rename()). Delete the hash named folder.
@@ -327,7 +304,8 @@ for shapefile_path in shapefile_list:
             Control output for a single scene
             """
             logger.info(f"{date_str}: Done")
-        
+            '''
+            
         else:
             logger.info(f"{date_str}: Already exists")
 

@@ -30,8 +30,8 @@ work and must be split up for sentinelhub.
 """
 INPUT_FOLDER = r"M:\IT-Projekte\digiman local\digiman_data\test_input"
 OUTPUT_FOLDER = r"M:\IT-Projekte\digiman local\digiman_data\test_output"
-START_DATE = '2025-06-23'
-END_DATE = '2025-06-23'
+START_DATE = '2025-06-01'
+END_DATE = '2025-06-30'
 RESOLUTION = 10  # Meter pro Pixel
 BAND_NAMES = [
     "B01",
@@ -81,6 +81,8 @@ consolehandler.setFormatter(formatter)
 
 logger.addHandler(filehandler)
 logger.addHandler(consolehandler)
+
+logger.setLevel(logging.DEBUG)
 
 
 ### SentinelHub-Setup
@@ -190,8 +192,7 @@ for shapefile_path in shapefile_list:
     gdf. union_all() can create a bounding box (coordinates for rectangle
     containing shape) for multipolygons (in case of multiple areas
     within a shape). We must turn it into a sh.BBox for the POST-Request.
-    Create a buffer around the bbox of 10%. Round the buffered coordinates
-    to tenths to get pixel size of exactly 10m x 10m.
+    Round coordinates to tenths to get pixel size of exactly 10m x 10m.
     bbox_to_dimensions generates an appropriate pixel width and height for
     our output according to our specified resolution (seemingly higher
     resolution than 10m/px from copernicus browser is due to interpolation).
@@ -206,8 +207,9 @@ for shapefile_path in shapefile_list:
         crs_code = gdf.crs.to_epsg()
     geometry = gdf.geometry.union_all()
     shgeometry = sh.Geometry(geometry, sh.CRS(crs_code))
-    bbox_unrounded = sh.BBox(bbox=geometry.bounds, crs=sh.CRS(crs_code)).buffer(0.2)
-    bbox = bbox_unrounded.apply(round_coordinates)
+    bbox_unrounded = sh.BBox(bbox=geometry.bounds, crs=sh.CRS(crs_code))
+    bbox_buffered = bbox_unrounded.buffer((100.0, 100.0), relative=False)
+    bbox = bbox_buffered.apply(round_coordinates)
     size = sh.bbox_to_dimensions(bbox, RESOLUTION)
     
     logger.info(f"{shapefile_path.name}: {repr(bbox)}")
@@ -240,14 +242,18 @@ for shapefile_path in shapefile_list:
     Create iterator containing scenes in the
     l2a collection from the 
     sentinelhub stac matching the desired timeframe
-    and location, excluding unnecessary information
+    and location, excluding unnecessary information.
+    Filter scenes with cloud cover greater than 80% (wip number).
+    We don't use "distinct='date'", as the generator only returns
+    date strings in this case, not scenes
     """
     catalog = sh.SentinelHubCatalog(config=config)
     matching_scenes = catalog.search(
         sh.DataCollection.SENTINEL2_L2A,
         bbox=bbox,
         time=(START_DATE, END_DATE),
-        fields={"include": ["id", "properties.datetime"], "exclude": []}
+        fields={"include": ["id", "properties.datetime"], "exclude": []},
+        filter="eo:cloud_cover < 80"
     )
     
     """
@@ -255,7 +261,7 @@ for shapefile_path in shapefile_list:
     """
     logger.info(f"{shapefile_path.name}: Matches für {START_DATE} bis {END_DATE}: {len(list(matching_scenes))}")
     for scene in matching_scenes:
-        logger.info(f"{scene["id"]}")
+        logger.info(f"{scene['id']}")
     
     ### Iterate over scenes
     for scene in matching_scenes:
