@@ -30,8 +30,8 @@ work and must be split up for sentinelhub.
 """
 INPUT_FOLDER = r"M:\IT-Projekte\digiman local\digiman_data\test_input"
 OUTPUT_FOLDER = r"M:\IT-Projekte\digiman local\digiman_data\test_output"
-START_DATE = '2025-06-01'
-END_DATE = '2025-06-30'
+START_DATE = '2025-06-23'
+END_DATE = '2025-06-23'
 RESOLUTION = 10  # Meter pro Pixel
 BAND_NAMES = [
     "B01",
