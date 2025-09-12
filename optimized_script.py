@@ -30,17 +30,9 @@ work and must be split up for sentinelhub.
 """
 INPUT_FOLDER = r"M:\IT-Projekte\digiman local\digiman_data\test_input"
 OUTPUT_FOLDER = r"M:\IT-Projekte\digiman local\digiman_data\test_output"
-START_DATE = '2025-06-21'
-END_DATE = '2025-06-21'
-RESOLUTION_HIGH = 10  #B02, B03, B04, B08
-RESOLUTION_MED = 20 #B8A
-BAND_NAMES = [
-    "B02",
-    "B03",
-    "B04",
-    "B08",
-    "B8A",
-]
+START_DATE = '2020-08-16'
+END_DATE = '2020-08-16'
+RESOLUTION = 10
 
 """
 Create Path-Objects.
@@ -100,40 +92,64 @@ function setup() {
     return {
         input: [{
             bands: [
-                "B01",
-                "B02",
-                "B03",
-                "B04",
-                "B05",
-                "B06",
-                "B07",
-                "B08",
-                "B8A",
-                "B09",
-                "B11",
-                "B12"
+                 "viewZenithMean",
+                 "sunAzimuthAngles",
+                 "CLD",
+                 "B04",
+                 "B01",
+                 "B07",
+                 "B09",
+                 "AOT",
+                 "dataMask",
+                 "sunZenithAngles",
+                 "CLP",
+                 "SCL",
+                 "B08",
+                 "B11",
+                 "B05",
+                 "B02",
+                 "viewAzimuthMean",
+                 "CLM",
+                 "SNW",
+                 "B12",
+                 "B8A",
+                 "B06",
+                 "B03"
             ],
             units: "DN"
         }],
         output:
-            [{id: "default", bands: 12, sampleType: "UINT16" }]
+            [{id: "default", bands: 23, sampleType: "UINT16" }]
     };
 }
 function evaluatePixel(sample) {
-    return [
-  sample.B01,
-  sample.B02,
-  sample.B03,
-  sample.B04,
-  sample.B05,
-  sample.B06,
-  sample.B07,
-  sample.B08,
-  sample.B8A,
-  sample.B09,
-  sample.B11,
-  sample.B12
+    return {
+        default: [
+            sample.B01,
+            sample.B02,
+            sample.B03,
+            sample.B04,
+            sample.B05,
+            sample.B06,
+            sample.B07,
+            sample.B08,
+            sample.B8A,
+            sample.B09,
+            sample.B11,
+            sample.B12,
+            sample.AOT,
+            sample.CLD,
+            sample.CLM,
+            sample.CLP,
+            sample.SCL,
+            sample.SNW,
+            sample.dataMask,
+            sample.sunAzimuthAngles,
+            sample.sunZenithAngles,
+            sample.viewAzimuthMean,
+            sample.viewZenithMean
         ]
+    };
 }
 """
 
@@ -178,7 +194,7 @@ for shapefile_path in shapefile_list:
     shgeometry = sh.Geometry(geometry, sh.CRS(crs_code))
     bbox_unrounded = sh.BBox(bbox=geometry.bounds, crs=sh.CRS(crs_code))
     bbox = bbox_unrounded.apply(round_coordinates)
-    size = sh.bbox_to_dimensions(bbox, RESOLUTION_HIGH)
+    size = sh.bbox_to_dimensions(bbox, RESOLUTION)
     
     logger.info(f"{shapefile_path.name}: {repr(bbox)}")
     
@@ -270,7 +286,6 @@ for shapefile_path in shapefile_list:
                 ],
                 responses=responses,
                 bbox=bbox,
-                geometry=shgeometry,
                 size=size,
                 config=config,
                 data_folder=datefolder_path
